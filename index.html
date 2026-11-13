@@ -1,0 +1,1075 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>BantuCall</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="Style.css">
+  <link rel="shortcut icon" href="Logo B communautaire aux reflets dorés.png" type="image/x-jpg">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@0.263.1/dist/umd/lucide.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-database-compat.js"></script>
+</head>
+<body>
+
+<!-- CANVAS PCB — fond circuit imprimé plein écran -->
+<canvas id="pcb-canvas"></canvas>
+
+<!-- SERVICE WORKER -->
+<script>
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+}
+</script>
+
+<!-- MIC MODAL -->
+<div class="modal hidden" id="mic-modal">
+  <div class="mbox">
+    <div class="micon">🎙️</div>
+    <div class="mtitle">Accès Microphone</div>
+    <p class="mtext">BantuCall a besoin de votre microphone. Cliquez ci-dessous puis autorisez dans la popup du navigateur.</p>
+    <button class="btn btn-gold btn-lg" onclick="requestMicAccess()">
+      🎙️ Autoriser le microphone
+    </button>
+  </div>
+</div>
+
+<!-- SHARE MODAL -->
+<div class="modal hidden" id="share-modal">
+  <div class="mbox">
+    <div class="micon">🔗</div>
+    <div class="mtitle">Inviter des Membres</div>
+    <p class="mtext">Partagez ce code ou ce lien pour inviter les membres.</p>
+    <div style="background:var(--bg2);border:1.5px dashed rgba(61,220,151,.35);border-radius:12px;padding:1rem;margin-bottom:1.5rem;">
+      <div style="font-family:'Inter',sans-serif;font-size:2rem;font-weight:800;color:var(--mint);letter-spacing:.22em;" id="share-code"></div>
+      <div style="font-size:.68rem;color:var(--secondary);margin-top:.2rem;">Code de réunion</div>
+    </div>
+    <div class="mshare-btns">
+      <button class="mshare-btn sbtn-wa" onclick="shareWA();closeModal('share-modal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+        Partager sur WhatsApp
+      </button>
+      <button class="mshare-btn sbtn-fb" onclick="shareFB();closeModal('share-modal')">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+        Partager sur Facebook
+      </button>
+      <button class="mshare-btn sbtn-cp" style="border:1.5px solid rgba(61,220,151,.3);" onclick="copyLink();closeModal('share-modal')">
+        📋 Copier le lien d'invitation
+      </button>
+    </div>
+    <button class="btn btn-outline btn-sm" onclick="closeModal('share-modal')">
+      ✕ Fermer
+    </button>
+  </div>
+</div>
+
+<!-- VERSE PICKER MODAL -->
+<div class="modal hidden" id="verse-modal">
+  <div class="mbox">
+    <div class="micon">📖</div>
+    <div class="mtitle">Verset Biblique</div>
+    <p class="mtext">Choisissez un verset à partager dans le chat</p>
+    <div class="verse-list" id="verse-list"></div>
+    <button class="btn btn-outline btn-sm" onclick="closeModal('verse-modal')">
+      ✕ Fermer
+    </button>
+  </div>
+</div>
+
+<!-- SCHEDULE MODAL -->
+<div class="modal hidden" id="schedule-modal">
+  <div class="mbox">
+    <div class="micon">📅</div>
+    <div class="mtitle">Planifier une Réunion</div>
+    <p class="mtext">Créez une réunion programmée avec rappel automatique</p>
+    <div class="fg" style="max-width:100%;">
+      <label>Titre de la réunion</label>
+      <input type="text" id="sched-title" placeholder="Ex: Réunion Famille du Dimanche"/>
+    </div>
+    <div class="fg" style="max-width:100%;">
+      <label>Date</label>
+      <input type="date" id="sched-date"/>
+    </div>
+    <div class="fg" style="max-width:100%;">
+      <label>Heure</label>
+      <input type="time" id="sched-time"/>
+    </div>
+    <div class="fg" style="max-width:100%;">
+      <label>Lien permanent (optionnel)</label>
+      <input type="text" id="sched-slug" placeholder="Ex: reunion-hebdo" style="text-transform:lowercase;"/>
+    </div>
+    <div class="fg" style="max-width:100%;">
+      <label>Rappel</label>
+      <select id="sched-reminder">
+        <option value="5">5 minutes avant</option>
+        <option value="15" selected>15 minutes avant</option>
+        <option value="30">30 minutes avant</option>
+        <option value="60">1 heure avant</option>
+      </select>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-gold" onclick="saveSchedule()">
+        ✅ Planifier
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('schedule-modal')">
+        ✕ Annuler
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ROLE MODAL -->
+<div class="modal hidden" id="role-modal">
+  <div class="mbox">
+    <div class="micon">👤</div>
+    <div class="mtitle" id="role-modal-name">Participant</div>
+    <p class="mtext">Actions disponibles en tant qu'Animateur</p>
+    <div style="display:flex;flex-direction:column;gap:.75rem;margin-bottom:1.25rem;">
+      <button class="btn btn-danger" id="role-mute-btn" onclick="hostMutePeer()">
+        🔇 Couper le micro
+      </button>
+      <button class="btn btn-outline" onclick="closeModal('role-modal')">
+        ✕ Annuler
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav>
+  <div class="fonc">
+    <div class="blogo"><img src="Logo B communautaire aux reflets dorés.png" alt="logo BantuCall"></div>
+    <div class="pos">
+      <div class="nav-logo">BantuCall</div>
+      <div class="nav-sub">Connecter · Échanger · Partager</div>
+    </div>
+  </div>
+  <div class="nav-links">
+    <a href="#features">Fonctionnalités</a>
+    <a href="#planning">Agenda</a>
+    <a href="#app">Appel Audio</a>
+  </div>
+  <button class="btn btn-gold" onclick="document.getElementById('app').scrollIntoView({behavior:'smooth'})">
+    Rejoindre →
+  </button>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <p class="hero-eyebrow">Au CONGO pour le CONGO</p>
+  <!-- LOGO + CIRCUITS LUMINEUX -->
+  <div class="logo-energy-wrap" id="logo-energy-wrap">
+
+    <!-- Circuits SVG superposés — NE PAS TOUCHER AU LOGO -->
+    <svg class="energy-svg" id="energy-svg" viewBox="0 0 900 320" preserveAspectRatio="xMidYMid meet" aria-hidden="true">
+      <defs>
+        <!-- Filtre glow mint -->
+        <filter id="glow-mint" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="3" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <!-- Filtre glow or -->
+        <filter id="glow-gold" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2.5" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <!-- Filtre glow blanc -->
+        <filter id="glow-white" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="2" result="blur"/>
+          <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+        </filter>
+        <!-- Gradient mint le long du tracé -->
+        <linearGradient id="grad-mint-h" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#3DDC97" stop-opacity="0"/>
+          <stop offset="40%" stop-color="#3DDC97" stop-opacity="0.9"/>
+          <stop offset="60%" stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#3DDC97" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="grad-gold-h" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#F5C518" stop-opacity="0"/>
+          <stop offset="50%" stop-color="#F5C518" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#F5C518" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="grad-mint-v" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#3DDC97" stop-opacity="0"/>
+          <stop offset="40%" stop-color="#3DDC97" stop-opacity="0.9"/>
+          <stop offset="60%" stop-color="#ffffff" stop-opacity="1"/>
+          <stop offset="100%" stop-color="#3DDC97" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+
+      <!-- ═══════════════════════════════════════════════
+           CONDUITS — canaux statiques translucides
+           ═══════════════════════════════════════════════ -->
+
+      <!-- Conduit gauche vertical -->
+      <path class="conduit" d="M 60 20 L 60 300" />
+      <!-- Conduit droit vertical -->
+      <path class="conduit" d="M 840 20 L 840 300" />
+      <!-- Conduit supérieur horizontal -->
+      <path class="conduit" d="M 60 20 Q 160 10 450 8 Q 740 10 840 20" />
+      <!-- Conduit inférieur horizontal -->
+      <path class="conduit" d="M 60 300 Q 160 310 450 312 Q 740 310 840 300" />
+
+      <!-- Ramifications gauche -->
+      <path class="conduit conduit-branch" d="M 60 80 L 90 80 L 110 95" />
+      <path class="conduit conduit-branch" d="M 60 160 L 100 160" />
+      <path class="conduit conduit-branch" d="M 60 240 L 90 240 L 110 225" />
+
+      <!-- Ramifications droite -->
+      <path class="conduit conduit-branch" d="M 840 80 L 810 80 L 790 95" />
+      <path class="conduit conduit-branch" d="M 840 160 L 800 160" />
+      <path class="conduit conduit-branch" d="M 840 240 L 810 240 L 790 225" />
+
+      <!-- Points de connexion -->
+      <circle class="conn-dot dot-mint" cx="60"  cy="20"  r="3" />
+      <circle class="conn-dot dot-mint" cx="840" cy="20"  r="3" />
+      <circle class="conn-dot dot-gold" cx="60"  cy="300" r="3" />
+      <circle class="conn-dot dot-gold" cx="840" cy="300" r="3" />
+      <circle class="conn-dot dot-mint" cx="60"  cy="160" r="2.5" />
+      <circle class="conn-dot dot-mint" cx="840" cy="160" r="2.5" />
+      <circle class="conn-dot dot-white" cx="450" cy="8"   r="2" />
+      <circle class="conn-dot dot-white" cx="450" cy="312" r="2" />
+
+      <!-- ═══════════════════════════════════════════════
+           FLUX — particules lumineuses animées
+           ═══════════════════════════════════════════════ -->
+
+      <!-- FLUX 1 — circuit supérieur gauche→droite (mint) -->
+      <path class="flux flux-mint flux-top"
+            d="M 60 20 Q 160 10 450 8 Q 740 10 840 20"
+            filter="url(#glow-mint)" />
+
+      <!-- FLUX 2 — circuit inférieur droite→gauche (or) -->
+      <path class="flux flux-gold flux-bottom"
+            d="M 840 300 Q 740 310 450 312 Q 160 310 60 300"
+            filter="url(#glow-gold)" />
+
+      <!-- FLUX 3 — conduit gauche haut→bas (blanc) -->
+      <path class="flux flux-white flux-left"
+            d="M 60 20 L 60 300"
+            filter="url(#glow-white)" />
+
+      <!-- FLUX 4 — conduit droit bas→haut (mint) -->
+      <path class="flux flux-mint2 flux-right"
+            d="M 840 300 L 840 20"
+            filter="url(#glow-mint)" />
+
+      <!-- FLUX 5 — ramification gauche milieu (or) -->
+      <path class="flux flux-gold2 flux-branch-l"
+            d="M 60 160 L 100 160"
+            filter="url(#glow-gold)" />
+
+      <!-- FLUX 6 — ramification droite milieu (blanc) -->
+      <path class="flux flux-white2 flux-branch-r"
+            d="M 840 160 L 800 160"
+            filter="url(#glow-white)" />
+    </svg>
+
+    <!-- Logo original — intact, non modifié -->
+    <div class="logo-joseph">
+      <img class="joseph" src="Logo 3D BantuCall avec slogan et arc doré.png" alt="BantuCall">
+    </div>
+  </div>
+  <p class="hero-tagline">Nous sommes des <em>visionnaires</em>, porteurs de provision et de sagesse, appelés à impacter notre génération par la <em>destinée divine</em>.</p>
+  <div class="hero-cta">
+    <button class="btn btn-gold btn-lg" onclick="document.getElementById('app').scrollIntoView({behavior:'smooth'})">
+      🎙️ Créer un appel
+    </button>
+    <button class="btn btn-outline btn-lg" onclick="document.getElementById('app').scrollIntoView({behavior:'smooth'})">
+      🔗 Rejoindre un appel
+    </button>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features">
+  <div class="sec-header">
+    <p class="sec-eyebrow">Pourquoi BantuCall ?</p>
+    <h2 class="sec-title">Rapidité · <span>Fiabilité</span></h2>
+  </div>
+  <div class="feat-grid">
+    <div class="feat-card">
+      <div class="feat-icon">♾️</div>
+      <div class="feat-title">Illimité</div>
+      <p class="feat-desc">Aucune limite de participants</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">📖</div>
+      <div class="feat-title">Versets Bibliques</div>
+      <p class="feat-desc">Partagez des versets directement dans le chat.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🔴</div>
+      <div class="feat-title">Enregistrement</div>
+      <p class="feat-desc">Enregistrez la réunion et téléchargez-la après l'appel.</p>
+    </div>
+    <div class="feat-card">
+      <div class="feat-icon">🔗</div>
+      <div class="feat-title">Partage Facile</div>
+      <p class="feat-desc">Invitez directement sur WhatsApp ou Facebook en 1 clic.</p>
+    </div>
+  </div>
+</section>
+
+<!-- PLANNING -->
+<section id="planning">
+  <div class="sec-header">
+    <p class="sec-eyebrow">Organisation</p>
+    <h2 class="sec-title">Agenda des <span>Réunions</span></h2>
+  </div>
+  <div style="text-align:center;margin-bottom:1.5rem;">
+    <button class="btn btn-gold btn-lg" onclick="document.getElementById('schedule-modal').classList.remove('hidden')">
+      📅 Planifier une Réunion
+    </button>
+  </div>
+  <div class="plan-grid" id="plan-grid">
+    <div style="grid-column:1/-1;text-align:center;color:var(--secondary);padding:2rem;font-size:.9rem;">
+      Aucune réunion planifiée. Créez-en une !
+    </div>
+  </div>
+</section>
+
+<!-- APP -->
+<section id="app">
+  <div class="sec-header">
+    <p class="sec-eyebrow">Application</p>
+    <h2 class="sec-title">Salle d'Appel <span>Audio</span></h2>
+  </div>
+  <div class="app-wrap">
+    <!-- Header -->
+    <div class="app-hdr">
+      <div class="app-hdr-title">BantuCall</div>
+      <span class="badge badge-wait hidden" id="badge-wait">
+        ⏳ Connexion...
+      </span>
+      <span class="badge badge-live hidden" id="badge-live">
+        <span class="live-dot"></span> EN DIRECT
+      </span>
+      <div class="rec-indicator" id="rec-indicator">
+        <span class="rec-dot"></span> REC
+      </div>
+      <span id="hdr-pcount" style="margin-left:auto;font-size:.8rem;color:var(--secondary);display:none">
+        <span id="hdr-num">0</span> participant(s)
+      </span>
+    </div>
+    <!-- Status -->
+    <div class="status-bar">
+      <div class="sdot" id="sdot"></div>
+      <span id="stext">Entrez votre nom pour commencer</span>
+    </div>
+
+    <!-- ① NOM -->
+    <div class="panel active" id="p-name">
+      <h2>Bienvenue</h2>
+      <p class="sub">Entrez votre nom et choisissez votre rôle</p>
+      <div class="fg">
+        <label>Prénom & Nom</label>
+        <input type="text" id="inp-name" placeholder="Ex: Gloire Makosso" maxlength="30"
+          onkeydown="if(event.key==='Enter')saveName()"/>
+      </div>
+      <div class="fg">
+        <label>Rôle</label>
+        <select id="inp-role">
+          <option value="member">Membre</option>
+          <option value="guest">Invité</option>
+          <option value="host">Animateur (créateur)</option>
+        </select>
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-gold btn-lg" onclick="saveName()">
+          Continuer →
+        </button>
+      </div>
+    </div>
+
+    <!-- ② LOBBY -->
+    <div class="panel" id="p-lobby">
+      <h2>Bonjour <span id="greet" style="color:var(--mint)"></span></h2>
+      <p class="sub">Créez un appel ou rejoignez une réunion existante</p>
+      <div class="lobby-cards">
+        <div class="lcard" onclick="createRoom()">
+          <div class="lcard-icon">🎙️</div>
+          <div class="lcard-title">Créer un Appel</div>
+          <p class="lcard-desc">Démarrez et invitez les membres</p>
+        </div>
+        <div class="lcard" onclick="showPanel('p-join')">
+          <div class="lcard-icon">🚪</div>
+          <div class="lcard-title">Rejoindre</div>
+          <p class="lcard-desc">Entrez le code reçu</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ③ REJOINDRE -->
+    <div class="panel" id="p-join">
+      <h2>Rejoindre une Réunion</h2>
+      <p class="sub">Entrez le code reçu par WhatsApp ou Facebook</p>
+      <div class="code-wrap">
+        <input type="text" id="inp-code" placeholder="AB12CD" maxlength="6"
+          oninput="this.value=this.value.toUpperCase()"
+          onkeydown="if(event.key==='Enter')joinRoom()"/>
+        <button class="btn btn-gold btn-lg" onclick="joinRoom()">
+          Rejoindre 🎙️
+        </button>
+      </div>
+      <div style="margin-top:1.5rem;">
+        <button class="btn btn-outline btn-sm" onclick="showPanel('p-lobby')">
+          ← Retour
+        </button>
+      </div>
+    </div>
+
+    <!-- ④ ROOM -->
+    <div id="room-panel">
+      <div class="room-body">
+        <!-- Participants -->
+        <div class="room-main">
+          <h3>Participants (<span id="part-count">0</span>)</h3>
+          <div id="pgrid">
+            <div class="empty-state">
+              <div class="ei">🎙️</div>
+              <div>En attente...</div>
+            </div>
+          </div>
+        </div>
+        <!-- Sidebar -->
+        <div>
+          <div class="sb-sec">
+            <h4>Code de Réunion</h4>
+            <div class="code-box">
+              <div class="code-big" id="room-code-disp">------</div>
+              <div class="code-lbl">Partagez pour inviter</div>
+              <div class="share-btns">
+                <button class="sbtn sbtn-wa" onclick="shareWA()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  WhatsApp
+                </button>
+                <button class="sbtn sbtn-fb" onclick="shareFB()">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
+                  Facebook
+                </button>
+                <button class="sbtn sbtn-cp" onclick="copyLink()">
+                  📋 Copier
+                </button>
+              </div>
+            </div>
+          </div>
+          <div class="sb-sec">
+            <h4>Infos</h4>
+            <div class="info-card">
+              <div class="irow"><span class="lbl">Durée</span><span class="val gold" id="dur">00:00</span></div>
+              <div class="irow"><span class="lbl">Membres</span><span class="val" id="info-pcount">1</span></div>
+              <div class="irow"><span class="lbl">Mon rôle</span><span class="val gold" id="my-role-disp">Membre</span></div>
+              <div class="irow"><span class="lbl">Statut</span><span class="val" style="color:var(--mint)">En direct</span></div>
+            </div>
+          </div>
+          <div class="sb-sec">
+            <h4>Messages</h4>
+            <div class="chat-box">
+              <div id="chat-msgs"></div>
+              <div class="reactions-bar">
+                <button class="react-btn" onclick="sendReaction('👏')" title="Applaudir">👏</button>
+                <button class="react-btn" onclick="sendReaction('🙏')" title="Prier">🙏</button>
+                <button class="react-btn" onclick="sendReaction('❤️')" title="Amour">❤️</button>
+                <button class="react-btn" onclick="sendReaction('🔥')" title="Feu">🔥</button>
+                <button class="react-btn" onclick="sendReaction('😂')" title="Rire">😂</button>
+                <button class="react-btn" onclick="sendReaction('🙌')" title="Louer">🙌</button>
+              </div>
+              <div class="chat-row">
+                <input type="text" id="chat-inp" placeholder="Votre message..." maxlength="200"
+                  onkeydown="if(event.key==='Enter')sendChat()"/>
+                <button class="verse-btn" onclick="openVersePicker()" title="Verset biblique">
+                  📖
+                </button>
+                <button class="chat-send" onclick="sendChat()">
+                  ➤
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Controls -->
+      <div class="ctrl-bar">
+        <div class="cbtn" id="cbtn-mute" onclick="toggleMute()">
+          <span class="ci" id="ci-mute">🎙️</span>
+          <span class="cl" id="cl-mute">Micro</span>
+        </div>
+        <div class="cbtn" id="cbtn-spk" onclick="toggleSpeaker()">
+          <span class="ci">🔊</span>
+          <span class="cl">Son</span>
+        </div>
+        <div class="cbtn" id="cbtn-hand" onclick="raiseHand()">
+          <span class="ci" id="ci-hand">✋</span>
+          <span class="cl">Main</span>
+        </div>
+        <div class="cbtn" id="cbtn-rec" onclick="toggleRecording()">
+          <span class="ci" id="ci-rec">⏺️</span>
+          <span class="cl" id="cl-rec">Enregistrer</span>
+        </div>
+        <div class="cbtn" onclick="document.getElementById('share-modal').classList.remove('hidden')">
+          <span class="ci">🙋</span>
+          <span class="cl">Inviter</span>
+        </div>
+        <div class="cbtn end-btn" onclick="leaveRoom()">
+          <span class="ci">📵</span>
+          <span class="cl">Quitter</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <p><span class="gold">BantuCall</span> · LA PROSPÉRITÉ NOUS ACCOMPAGNE</p>
+  <p style="margin-top:.4rem;">BantuCall-FAM_KBD@2026 | Glorymak</p>
+</footer>
+<div class="toast" id="toast"></div>
+
+<script src="Script.js"></script>
+<script>lucide.createIcons();</script>
+
+<!-- ═══════════════════════════════════════════════════════
+     BANTUCALL — Canvas PCB plein écran + circuits logo
+     Fond circuit imprimé animé sur tout le site
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function() {
+  'use strict';
+
+  /* ── Respect prefers-reduced-motion ── */
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+  var wrap      = null;
+  var observer  = null;
+  var reviveTimer = null;
+  var currentState = '';
+
+  /* ══════════════════════════════════════════════════════════
+     1. INITIALISATION — dasharray calculé sur longueur réelle
+     ══════════════════════════════════════════════════════════ */
+  var FLUX_MAP = [
+    { sel: '.flux-top',      prop: '--len-top',    tail: 120 },
+    { sel: '.flux-bottom',   prop: '--len-bottom', tail: 100 },
+    { sel: '.flux-left',     prop: '--len-left',   tail:  80 },
+    { sel: '.flux-right',    prop: '--len-right',  tail:  80 },
+    { sel: '.flux-branch-l', prop: '--len-bl',     tail:  30 },
+    { sel: '.flux-branch-r', prop: '--len-br',     tail:  30 },
+  ];
+
+  function initFluxLengths() {
+    wrap = document.getElementById('logo-energy-wrap');
+    if (!wrap) return;
+
+    /* Masquer tous les flux pendant l'allumage */
+    wrap.classList.add('state-booting');
+
+    FLUX_MAP.forEach(function(item) {
+      var el = document.querySelector(item.sel);
+      if (!el) return;
+      var len = el.getTotalLength ? el.getTotalLength() : 500;
+      el.style.strokeDasharray  = item.tail + ' ' + (len - item.tail);
+      el.style.strokeDashoffset = len;
+      el.style.setProperty(item.prop, len + 'px');
+      wrap.style.setProperty(item.prop, len + 'px');
+    });
+
+    /* Flash de démarrage : allumage progressif séquencé */
+    setTimeout(function() {
+      wrap.classList.remove('state-booting');
+      setState('idle');
+    }, 300);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     2. MACHINE D'ÉTATS — transitions douces entre états
+     ══════════════════════════════════════════════════════════ */
+  var STATES = ['state-idle', 'state-connecting', 'state-in-call', 'state-booting', 'state-reviving'];
+
+  function setState(newState) {
+    if (currentState === newState) return;
+    if (!wrap) return;
+
+    /* Annuler reprise en cours si on repasse en appel */
+    if (reviveTimer && newState !== 'idle') {
+      clearTimeout(reviveTimer);
+      reviveTimer = null;
+    }
+
+    STATES.forEach(function(s) { wrap.classList.remove(s); });
+    wrap.classList.add('state-' + newState);
+    currentState = newState;
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     3. SURVEILLANCE — MutationObserver sur badges + room-panel
+        Zéro modification de Script.js
+     ══════════════════════════════════════════════════════════ */
+  function watchCallState() {
+    var badgeLive = document.getElementById('badge-live');
+    var badgeWait = document.getElementById('badge-wait');
+    var roomPanel = document.getElementById('room-panel');
+
+    if (!wrap) return;
+
+    function computeState() {
+      var liveVisible = badgeLive && !badgeLive.classList.contains('hidden');
+      var waitVisible = badgeWait && !badgeWait.classList.contains('hidden');
+      var roomActive  = roomPanel && roomPanel.classList.contains('active');
+
+      if (liveVisible || roomActive) {
+        /* Appel actif → arrêt immédiat des flux */
+        if (reviveTimer) { clearTimeout(reviveTimer); reviveTimer = null; }
+        setState('in-call');
+
+      } else if (waitVisible) {
+        /* Connexion en cours → ralentissement */
+        setState('connecting');
+
+      } else if (currentState === 'in-call' || currentState === 'connecting') {
+        /* Fin d'appel → reprise progressive séquencée */
+        setState('reviving');
+        reviveTimer = setTimeout(function() {
+          setState('idle');
+          reviveTimer = null;
+        }, 2200); /* durée du fondu de reprise */
+
+      } else if (currentState !== 'booting') {
+        setState('idle');
+      }
+    }
+
+    var targets = [badgeLive, badgeWait, roomPanel].filter(Boolean);
+    observer = new MutationObserver(computeState);
+    targets.forEach(function(el) {
+      observer.observe(el, { attributes: true, attributeFilter: ['class', 'style'] });
+    });
+
+    computeState();
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     4. NETTOYAGE — libère l'observer si le héro quitte le DOM
+     ══════════════════════════════════════════════════════════ */
+  function setupCleanup() {
+    var hero = document.getElementById('hero');
+    if (!hero || !window.MutationObserver) return;
+
+    var heroObserver = new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.removedNodes.forEach(function(node) {
+          if (node === hero || (node.contains && node.contains(hero))) {
+            if (observer)   { observer.disconnect();   observer = null;   }
+            if (reviveTimer){ clearTimeout(reviveTimer); reviveTimer = null; }
+            heroObserver.disconnect();
+          }
+        });
+      });
+    });
+    heroObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     5. LANCEMENT
+     ══════════════════════════════════════════════════════════ */
+  function boot() {
+    initFluxLengths();
+    watchCallState();
+    setupCleanup();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+})();
+</script>
+<!-- ═══════════════════════════════════════════════════════
+     BANTUCALL — MOTEUR CANVAS PCB PLEIN ÉCRAN
+     Fond circuit imprimé animé sur tout le site
+     Mint #3DDC97 + Or #F5C518 + Blanc sur fond #0B1640
+     ═══════════════════════════════════════════════════════ -->
+<script>
+(function(){
+  'use strict';
+  if(window.matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+
+  var canvas = document.getElementById('pcb-canvas');
+  if(!canvas) return;
+  var ctx = canvas.getContext('2d');
+
+  /* ── Palette ── */
+  var C = {
+    bg:       '#0B1640',
+    mint:     '#3DDC97',
+    gold:     '#F5C518',
+    white:    '#FFFFFF',
+    mintDim:  'rgba(61,220,151,',
+    goldDim:  'rgba(245,197,24,',
+    whiteDim: 'rgba(255,255,255,'
+  };
+
+  /* ── État global ── */
+  var running   = true;   /* false = appel actif, animation gelée */
+  var fadeOut   = false;  /* transition vers arrêt */
+  var fadeIn    = false;  /* transition vers reprise */
+  var globalAlpha = 1.0;  /* opacité globale du canvas */
+  var raf       = null;
+
+  /* ── Grille PCB ── */
+  var GRID = 60;      /* taille cellule px */
+  var nodes = [];     /* nœuds de connexion */
+  var traces = [];    /* segments de circuit */
+  var pulses = [];    /* particules lumineuses en mouvement */
+
+  /* ── Redimensionnement ── */
+  function resize(){
+    canvas.width  = window.innerWidth;
+    canvas.height = document.body.scrollHeight;
+    build();
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     CONSTRUCTION DU RÉSEAU PCB
+     ══════════════════════════════════════════════════════════ */
+  function build(){
+    nodes  = [];
+    traces = [];
+    pulses = [];
+
+    var W = canvas.width;
+    var H = canvas.height;
+    var cols = Math.ceil(W / GRID) + 1;
+    var rows = Math.ceil(H / GRID) + 1;
+
+    /* Grille de nœuds — présents aléatoirement (~40%) */
+    var grid = {};
+    for(var r=0; r<rows; r++){
+      for(var c=0; c<cols; c++){
+        if(Math.random() < 0.42){
+          var key = r+'_'+c;
+          var nx = c*GRID + (Math.random()*12-6);
+          var ny = r*GRID + (Math.random()*12-6);
+          /* Snap à la grille propre */
+          nx = Math.round(nx/GRID)*GRID;
+          ny = Math.round(ny/GRID)*GRID;
+          /* Couleur du nœud */
+          var rnd = Math.random();
+          var col = rnd<0.65 ? C.mint : rnd<0.85 ? C.gold : C.white;
+          nodes.push({ x:nx, y:ny, col:col, r: Math.random()<0.3?3:2 });
+          grid[key] = nodes.length-1;
+        }
+      }
+    }
+
+    /* Tracés entre nœuds voisins (horizontal + vertical uniquement = style PCB) */
+    var dirs = [[0,1],[1,0]]; /* droite, bas */
+    for(var r=0; r<rows; r++){
+      for(var c=0; c<cols; c++){
+        var idx = grid[r+'_'+c];
+        if(idx===undefined) continue;
+        var n1 = nodes[idx];
+        dirs.forEach(function(d){
+          var r2=r+d[0], c2=c+d[1];
+          var idx2 = grid[r2+'_'+c2];
+          if(idx2===undefined) return;
+          if(Math.random()>0.55) return; /* pas tous les voisins */
+          var n2 = nodes[idx2];
+          /* Couleur du tracé = couleur du nœud source */
+          var rnd2 = Math.random();
+          var tcol = rnd2<0.60 ? C.mint : rnd2<0.82 ? C.gold : C.white;
+          traces.push({
+            x1:n1.x, y1:n1.y, x2:n2.x, y2:n2.y,
+            col: tcol,
+            alpha: 0.08 + Math.random()*0.10  /* conduit statique discret */
+          });
+        });
+      }
+    }
+
+    /* Tracés longs diagonaux (style laser de l'image référence) */
+    var NB_LASER = Math.floor(W*H / 400000) + 3;
+    for(var i=0; i<NB_LASER; i++){
+      var x1l = Math.random()*W;
+      var y1l = Math.random()*H;
+      var angle = (Math.random()<0.5 ? 1:-1) * (30+Math.random()*25) * Math.PI/180;
+      var len   = 300 + Math.random()*500;
+      traces.push({
+        x1: x1l, y1: y1l,
+        x2: x1l + Math.cos(angle)*len,
+        y2: y1l + Math.sin(angle)*len,
+        col: Math.random()<0.5 ? C.mint : C.gold,
+        alpha: 0.12 + Math.random()*0.08,
+        laser: true,
+        width: 1.5 + Math.random()*1.5
+      });
+    }
+
+    /* Particules lumineuses sur les tracés */
+    spawnPulses();
+  }
+
+  function spawnPulses(){
+    pulses = [];
+    /* Une particule par tracé (~60% des tracés) */
+    traces.forEach(function(t){
+      if(Math.random()>0.60) return;
+      addPulse(t);
+    });
+  }
+
+  function addPulse(t){
+    var dx = t.x2-t.x1, dy = t.y2-t.y1;
+    var len = Math.sqrt(dx*dx+dy*dy);
+    if(len<10) return;
+    var spd = t.laser
+      ? 0.8 + Math.random()*1.2
+      : 0.4 + Math.random()*0.8;
+    pulses.push({
+      t:   t,
+      pos: Math.random(),   /* 0..1 le long du tracé */
+      spd: spd/len,         /* vitesse normalisée */
+      len: t.laser ? 0.25 + Math.random()*0.3 : 0.15 + Math.random()*0.2,
+      col: t.col,
+      alpha: t.laser ? 0.9 : 0.75 + Math.random()*0.2
+    });
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     RENDU FRAME
+     ══════════════════════════════════════════════════════════ */
+  function draw(){
+    var W = canvas.width, H = canvas.height;
+    ctx.clearRect(0,0,W,H);
+
+    ctx.save();
+    ctx.globalAlpha = globalAlpha;
+
+    /* ── Conduits statiques ── */
+    traces.forEach(function(t){
+      ctx.beginPath();
+      ctx.moveTo(t.x1,t.y1);
+      ctx.lineTo(t.x2,t.y2);
+      ctx.strokeStyle = t.col === C.mint
+        ? C.mintDim  + t.alpha + ')'
+        : t.col === C.gold
+          ? C.goldDim  + t.alpha + ')'
+          : C.whiteDim + t.alpha + ')';
+      ctx.lineWidth = t.laser ? (t.width||1.5) : 0.8;
+      ctx.stroke();
+    });
+
+    /* ── Nœuds ── */
+    nodes.forEach(function(n){
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r, 0, Math.PI*2);
+      ctx.fillStyle = n.col === C.mint
+        ? C.mintDim  + '0.35)'
+        : n.col === C.gold
+          ? C.goldDim  + '0.35)'
+          : C.whiteDim + '0.30)';
+      ctx.fill();
+      /* Halo */
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, n.r+2, 0, Math.PI*2);
+      ctx.strokeStyle = n.col === C.mint
+        ? C.mintDim  + '0.12)'
+        : n.col === C.gold
+          ? C.goldDim  + '0.12)'
+          : C.whiteDim + '0.10)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
+    /* ── Flux lumineux (particules) ── */
+    if(running || fadeOut){
+      pulses.forEach(function(p){
+        var t  = p.t;
+        var dx = t.x2-t.x1, dy = t.y2-t.y1;
+        var len = Math.sqrt(dx*dx+dy*dy);
+        var ux  = dx/len, uy = dy/len;
+
+        /* Position tête */
+        var hx = t.x1 + dx*p.pos;
+        var hy = t.y1 + dy*p.pos;
+
+        /* Traînée : gradient le long du tracé */
+        var tailLen = len * p.len;
+        var tx0 = hx - ux*tailLen;
+        var ty0 = hy - uy*tailLen;
+
+        var grad = ctx.createLinearGradient(tx0,ty0,hx,hy);
+        if(p.col === C.mint){
+          grad.addColorStop(0, C.mintDim  + '0)');
+          grad.addColorStop(0.6, C.mintDim + '0.6)');
+          grad.addColorStop(1,   'rgba(255,255,255,'+p.alpha+')');
+        } else if(p.col === C.gold){
+          grad.addColorStop(0, C.goldDim  + '0)');
+          grad.addColorStop(0.6, C.goldDim + '0.65)');
+          grad.addColorStop(1,   'rgba(255,220,80,'+p.alpha+')');
+        } else {
+          grad.addColorStop(0, C.whiteDim + '0)');
+          grad.addColorStop(0.7, C.whiteDim + '0.5)');
+          grad.addColorStop(1,   C.whiteDim + p.alpha+')');
+        }
+
+        /* Halo glow autour de la traînée */
+        ctx.save();
+        ctx.shadowColor = p.col === C.gold ? C.gold : p.col === C.mint ? C.mint : '#fff';
+        ctx.shadowBlur  = t.laser ? 18 : 8;
+        ctx.beginPath();
+        ctx.moveTo(tx0,ty0);
+        ctx.lineTo(hx,hy);
+        ctx.strokeStyle = grad;
+        ctx.lineWidth   = t.laser ? (t.width||1.5)*1.4 : 1.8;
+        ctx.lineCap     = 'round';
+        ctx.stroke();
+        ctx.restore();
+
+        /* Point lumineux en tête */
+        var grd = ctx.createRadialGradient(hx,hy,0,hx,hy, t.laser?8:5);
+        grd.addColorStop(0, p.col === C.gold ? 'rgba(255,230,100,0.95)' : p.col === C.mint ? 'rgba(100,255,180,0.95)' : 'rgba(255,255,255,0.9)');
+        grd.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath();
+        ctx.arc(hx,hy, t.laser?8:5, 0, Math.PI*2);
+        ctx.fillStyle = grd;
+        ctx.fill();
+      });
+    }
+
+    ctx.restore();
+
+    /* ── Avancement des particules ── */
+    if(running || fadeOut){
+      pulses.forEach(function(p){
+        p.pos += p.spd;
+        if(p.pos>1.05){
+          p.pos = -p.len;
+          /* Respawn sur un tracé aléatoire de temps en temps */
+          if(Math.random()<0.08){
+            var newT = traces[Math.floor(Math.random()*traces.length)];
+            p.t   = newT;
+            p.col = newT.col;
+          }
+        }
+      });
+    }
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     BOUCLE PRINCIPALE
+     ══════════════════════════════════════════════════════════ */
+  function loop(){
+    /* Transition fadeOut vers arrêt */
+    if(fadeOut){
+      globalAlpha = Math.max(0, globalAlpha - 0.012);
+      if(globalAlpha <= 0){
+        fadeOut  = false;
+        running  = false;
+        /* Dessiner une dernière fois le fond statique à alpha très bas */
+        globalAlpha = 0.06;
+      }
+    }
+    /* Transition fadeIn vers reprise */
+    if(fadeIn){
+      globalAlpha = Math.min(1, globalAlpha + 0.008);
+      if(globalAlpha >= 1){
+        fadeIn  = false;
+        running = true;
+      }
+    }
+
+    draw();
+    raf = requestAnimationFrame(loop);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     CONTRÔLE ÉTAT : arrêt/reprise synchronisé avec l'appel
+     Observe badge-live, badge-wait, room-panel (sans toucher Script.js)
+     ══════════════════════════════════════════════════════════ */
+  function watchPCBState(){
+    var badgeLive = document.getElementById('badge-live');
+    var badgeWait = document.getElementById('badge-wait');
+    var roomPanel = document.getElementById('room-panel');
+
+    function update(){
+      var inCall = (badgeLive && !badgeLive.classList.contains('hidden')) ||
+                   (roomPanel && roomPanel.classList.contains('active'));
+      var connecting = badgeWait && !badgeWait.classList.contains('hidden');
+
+      if(inCall){
+        /* Appel actif → fondu vers arrêt */
+        if(running || fadeIn){
+          fadeIn  = false;
+          fadeOut = true;
+        }
+      } else if(connecting){
+        /* Connexion → ralentir visuellement (canvas continue, particules + lentes) */
+        pulses.forEach(function(p){ p.spd *= 0.3; });
+      } else {
+        /* Fin d'appel ou idle → reprise */
+        if(!running && !fadeIn){
+          fadeOut = false;
+          fadeIn  = true;
+          /* Réinitialiser vitesses */
+          pulses.forEach(function(p){
+            p.spd = (p.t.laser ? 0.8+Math.random()*1.2 : 0.4+Math.random()*0.8) /
+                    Math.sqrt(Math.pow(p.t.x2-p.t.x1,2)+Math.pow(p.t.y2-p.t.y1,2));
+          });
+        }
+      }
+    }
+
+    var targets = [badgeLive, badgeWait, roomPanel].filter(Boolean);
+    var obs = new MutationObserver(update);
+    targets.forEach(function(el){
+      obs.observe(el,{attributes:true,attributeFilter:['class']});
+    });
+    update();
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     RESIZE — reconstruire le réseau si la taille change
+     ══════════════════════════════════════════════════════════ */
+  var resizeTimer;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function(){
+      resize();
+    }, 250);
+  });
+
+  /* Resize aussi quand le DOM change de hauteur (sections qui s'ouvrent) */
+  if(window.ResizeObserver){
+    var ro = new ResizeObserver(function(){
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(resize, 300);
+    });
+    ro.observe(document.body);
+  }
+
+  /* ══════════════════════════════════════════════════════════
+     DÉMARRAGE
+     ══════════════════════════════════════════════════════════ */
+  function boot(){
+    resize();
+    loop();
+    watchPCBState();
+  }
+
+  if(document.readyState==='loading'){
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
+
+})();
+</script>
+</body>
+</html>
