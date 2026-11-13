@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════
-//  FAMILLE JOSEPH — Audio Complet avec Firebase + WebRTC
+//  BANTUCALL — Audio Complet avec Firebase + WebRTC
 // ══════════════════════════════════════════════════════════════
 
 // ── FIREBASE ──────────────────────────────────────────────────
@@ -25,7 +25,7 @@ let isMuted=false,isSpeakerOn=true,handRaised=false;
 let durationTimer=null,callStart=null,analyserInterval=null;
 let mediaRecorder=null,recordedChunks=[],isRecording=false;
 let selectedPeerForAction=null;
-let connQuality={};  // peerId → 'good'|'warn'|'bad'
+let connQuality={};
 let connCheckTimers={};
 let bipCtx=null;
 
@@ -82,7 +82,7 @@ async function requestNotifPerm(){
 }
 function pushNotif(title,body){
   if('Notification' in window && Notification.permission==='granted'){
-    new Notification(title,{body,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">✝</text></svg>'});
+    new Notification(title,{body,icon:'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">📡</text></svg>'});
   }
 }
 
@@ -90,7 +90,12 @@ function pushNotif(title,body){
 function saveName(){
   const v=document.getElementById('inp-name').value.trim();
   if(!v){toast('⚠️ Veuillez entrer votre nom');return;}
-  myName=v;myId=rndId(12);
+  myName=v;
+  // ── FIX BUG 1 : conserver l'ID entre refreshs pour reconnexion ──
+  // Si un ID existe déjà en session (refresh), on le réutilise
+  myId=sessionStorage.getItem('bc-myId')||rndId(12);
+  sessionStorage.setItem('bc-myId',myId);
+  // ────────────────────────────────────────────────────────────────
   myRole=document.getElementById('inp-role').value;
   document.getElementById('greet').textContent=myName.split(' ')[0];
   const roleLabels={host:'👑 Animateur',member:'👤 Membre',guest:'🙋 Invité'};
@@ -106,18 +111,16 @@ function saveName(){
 // ── MICROPHONE + NOISE REDUCTION ───────────────────────────────
 async function getMic(){
   try{
-    // Contraintes avancées avec réduction de bruit
     localStream=await navigator.mediaDevices.getUserMedia({
       audio:{
         echoCancellation:true,
-        noiseSuppression:true,    // Réduction de bruit auto
-        autoGainControl:true,     // Gain automatique
+        noiseSuppression:true,
+        autoGainControl:true,
         sampleRate:48000,
         channelCount:1
       },
       video:false
     });
-    // Traitement audio supplémentaire via Web Audio API
     applyAudioProcessing();
     return true;
   }catch(e){
@@ -131,14 +134,12 @@ function applyAudioProcessing(){
     const ctx=new AudioContext();
     const src=ctx.createMediaStreamSource(localStream);
     const dest=ctx.createMediaStreamDestination();
-    // Compresseur dynamique pour equaliser les volumes
     const comp=ctx.createDynamicsCompressor();
     comp.threshold.setValueAtTime(-50,ctx.currentTime);
     comp.knee.setValueAtTime(40,ctx.currentTime);
     comp.ratio.setValueAtTime(12,ctx.currentTime);
     comp.attack.setValueAtTime(0,ctx.currentTime);
     comp.release.setValueAtTime(.25,ctx.currentTime);
-    // Filtre passe-haut (coupe les basses fréquences — bruit de fond)
     const hpf=ctx.createBiquadFilter();
     hpf.type='highpass';
     hpf.frequency.setValueAtTime(100,ctx.currentTime);
@@ -158,7 +159,6 @@ async function createRoom(){
   if(!await getMic())return;
   roomCode=genCode();
   await enterRoom();
-  // Notif push "réunion commencée"
   pushNotif('BantuCall','La réunion a commencé ! Code: '+roomCode);
 }
 
@@ -182,6 +182,12 @@ async function enterRoom(){
   document.getElementById('share-code').textContent=roomCode;
   document.getElementById('hdr-pcount').style.display='block';
 
+  // ── FIX BUG 1 : sauvegarder la session pour reconnexion après refresh ──
+  sessionStorage.setItem('bc-roomCode',roomCode);
+  sessionStorage.setItem('bc-myName',myName);
+  sessionStorage.setItem('bc-myRole',myRole);
+  // ─────────────────────────────────────────────────────────────────────
+
   participants[myId]={name:myName,muted:false,speaking:false,self:true,role:myRole};
   renderParticipants();
 
@@ -190,10 +196,32 @@ async function enterRoom(){
   await myRef.set({name:myName,muted:false,role:myRole,joinedAt:Date.now()});
   myRef.onDisconnect().remove();
 
-  // Membres existants
+  // ── FIX BUG 2 : mesh complet — lire TOUS les membres existants ────────
+  // On lit d'abord le snapshot complet pour créer les offers vers chaque
+  // membre déjà présent, AVANT d'écouter child_added
+  const snap = await roomRef.child('members').once('value');
+  const existingMembers = [];
+  snap.forEach(child => {
+    if(child.key !== myId) existingMembers.push({id:child.key, data:child.val()});
+  });
+  // Créer les connexions vers tous les membres déjà là
+  for(const peer of existingMembers){
+    const d = peer.data;
+    if(!participants[peer.id]){
+      participants[peer.id]={name:d.name,muted:d.muted||false,speaking:false,role:d.role||'member'};
+    }
+    if(!peerConnections[peer.id]) await createOffer(peer.id);
+    startConnQualityCheck(peer.id);
+  }
+  renderParticipants();
+  // ─────────────────────────────────────────────────────────────────────
+
+  // Écouter les nouveaux membres qui arrivent APRÈS nous
   roomRef.child('members').on('child_added',async snap=>{
     const peerId=snap.key;
     if(peerId===myId)return;
+    // Ignorer les membres déjà traités au snapshot initial
+    if(existingMembers.find(m=>m.id===peerId)) return;
     const d=snap.val();
     if(!participants[peerId]){
       participants[peerId]={name:d.name,muted:d.muted||false,speaking:false,role:d.role||'member'};
@@ -222,7 +250,6 @@ async function enterRoom(){
     if(peerId===myId||!participants[peerId])return;
     const d=snap.val();
     participants[peerId].muted=d.muted||false;
-    // Commande mute de l'animateur
     if(d.forceMute&&d.forceMuteTarget===myId&&!isMuted){
       isMuted=true;
       if(localStream)localStream.getAudioTracks().forEach(t=>t.enabled=false);
@@ -274,7 +301,7 @@ async function enterRoom(){
   setStatus('En direct · Code: '+roomCode,'green');
   document.getElementById('badge-wait').classList.add('hidden');
   document.getElementById('badge-live').classList.remove('hidden');
-  sysChat('Bienvenu dans la réunion de BantuCall  · Code: '+roomCode);
+  sysChat('✅ Bienvenue dans la réunion BantuCall · Code: '+roomCode);
   toast('✅ Réunion démarrée ! Code: '+roomCode,4000);
 }
 
@@ -317,7 +344,6 @@ function createPC(peerId){
     if(state==='connected') updateConnQuality(peerId,'good');
     if(state==='failed'||state==='disconnected'){closePeer(peerId);}
   };
-  // ICE state pour qualité connexion
   pc.oniceconnectionstatechange=()=>{
     const s=pc.iceConnectionState;
     if(s==='connected'||s==='completed') updateConnQuality(peerId,'good');
@@ -354,7 +380,6 @@ function startConnQualityCheck(peerId){
         if(rtt>0.3)q='warn';
         if(rtt>0.8)q='bad';
         updateConnQuality(peerId,q);
-        // Bip si mauvaise connexion et changement d'état
         if(q==='bad'&&prev!=='bad'){
           playBip();
           const pname=participants[peerId]?.name||'Un participant';
@@ -406,7 +431,6 @@ function renderParticipants(){
       <div class="pstat">${p.speaking?'🎙️ parle...':p.muted?'silencieux':'🎧 écoute'}</div>
       ${p.muted?'<div class="pmicon">🔇</div>':''}
     `;
-    // Click pour animateur
     if(isHost){
       tile.style.cursor='pointer';
       tile.title='Cliquez pour gérer ce participant';
@@ -428,7 +452,6 @@ async function hostMutePeer(){
   const p=participants[selectedPeerForAction];
   if(!p)return;
   const newMuted=!p.muted;
-  // Envoyer commande via Firebase
   await roomRef.child('members/'+myId).update({forceMute:true,forceMuteTarget:selectedPeerForAction});
   setTimeout(()=>roomRef.child('members/'+myId).update({forceMute:false,forceMuteTarget:''}),2000);
   toast(newMuted?'🔇 Commande envoyée à '+p.name:'🎙️ Micro réactivé pour '+p.name);
@@ -495,7 +518,6 @@ function startRecording(){
   try{
     recordedChunks=[];
     const stream=new MediaStream([...localStream.getTracks()]);
-    // Mixer aussi les audio distants si possible
     mediaRecorder=new MediaRecorder(stream,{mimeType:'audio/webm'});
     mediaRecorder.ondataavailable=e=>{if(e.data.size>0)recordedChunks.push(e.data);};
     mediaRecorder.onstop=downloadRecording;
@@ -522,7 +544,7 @@ function downloadRecording(){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   const date=new Date().toLocaleDateString('fr-FR').replace(/\//g,'-');
-  a.href=url;a.download='FamilleJoseph-Reunion-'+date+'.webm';
+  a.href=url;a.download='BantuCall-Reunion-'+date+'.webm';
   document.body.appendChild(a);a.click();document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
@@ -596,7 +618,7 @@ function updateDuration(){
 // ── PARTAGE ──────────────────────────────────────────────────
 function getLink(){return location.origin+location.pathname+'?room='+roomCode;}
 function shareWA(){
-  const txt=' *BantuCall* — Réunion Audio\n\nRejoignez-nous !\n\n🔗 '+getLink()+'\n📌 Code: *'+roomCode+'*\n\nÀ tout de suite 🙏';
+  const txt='🎙️ *BantuCall* — Réunion Audio\n\nRejoignez-nous !\n\n🔗 '+getLink()+'\n📌 Code: *'+roomCode+'*\n\nÀ tout de suite 🙏';
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 }
 function shareFB(){window.open('https://www.facebook.com/sharer/sharer.php?u='+encodeURIComponent(getLink()),'_blank');}
@@ -617,6 +639,9 @@ function leaveRoom(){
   document.getElementById('hdr-pcount').style.display='none';
   participants={};peerConnections={};audioElements={};connQuality={};
   isMuted=false;handRaised=false;isRecording=false;
+  // ── FIX BUG 1 : effacer la session quand on quitte volontairement ──
+  sessionStorage.removeItem('bc-roomCode');
+  // ──────────────────────────────────────────────────────────────────
   document.getElementById('ci-mute').textContent='🎙️';
   document.getElementById('cl-mute').textContent='Couper micro';
   document.getElementById('cbtn-mute').className='cbtn';
@@ -638,10 +663,9 @@ function saveSchedule(){
   if(!title||!date||!time){toast('⚠️ Remplissez tous les champs obligatoires');return;}
   const dt=new Date(date+'T'+time);
   const code=slug||genCode();
-  const schedules=JSON.parse(localStorage.getItem('fj-schedules')||'[]');
+  const schedules=JSON.parse(localStorage.getItem('bc-schedules')||'[]');
   schedules.push({id:rndId(8),title,date,time,code,reminder,ts:dt.getTime()});
-  localStorage.setItem('fj-schedules',JSON.stringify(schedules));
-  // Planifier rappel
+  localStorage.setItem('bc-schedules',JSON.stringify(schedules));
   const msUntil=dt.getTime()-Date.now()-(reminder*60000);
   if(msUntil>0){
     setTimeout(()=>{
@@ -659,13 +683,12 @@ function saveSchedule(){
 }
 
 function renderSchedules(){
-  const schedules=JSON.parse(localStorage.getItem('fj-schedules')||'[]');
+  const schedules=JSON.parse(localStorage.getItem('bc-schedules')||'[]');
   const grid=document.getElementById('plan-grid');
   if(!schedules.length){
-    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--muted);padding:2rem;font-size:.9rem;">Aucune réunion planifiée. Créez-en une !</div>';
+    grid.innerHTML='<div style="grid-column:1/-1;text-align:center;color:var(--secondary);padding:2rem;font-size:.9rem;">Aucune réunion planifiée. Créez-en une !</div>';
     return;
   }
-  // Trier par date
   schedules.sort((a,b)=>a.ts-b.ts);
   grid.innerHTML=schedules.map(s=>{
     const dt=new Date(s.ts);
@@ -681,7 +704,7 @@ function renderSchedules(){
             <div class="plan-time">🕐 ${timeStr}</div>
           </div>
         </div>
-        <div style="font-size:.8rem;color:var(--muted);margin-bottom:.5rem;">Code: <span style="color:var(--gold);font-weight:700;letter-spacing:.1em;">${s.code}</span></div>
+        <div style="font-size:.8rem;color:var(--secondary);margin-bottom:.5rem;">Code: <span style="color:var(--gold);font-weight:700;letter-spacing:.1em;">${s.code}</span></div>
         <div class="plan-actions">
           <button class="plan-btn plan-btn-join" onclick="joinScheduled('${s.code}')">🎙️ Rejoindre</button>
           <button class="plan-btn plan-btn-share" onclick="shareScheduled('${s.code}','${esc(s.title)}')">📤 Partager</button>
@@ -700,26 +723,24 @@ function joinScheduled(code){
 }
 function shareScheduled(code,title){
   const link=location.origin+location.pathname+'?room='+code;
-  const txt=' *BantuCall* — '+title+'\n\n🔗 '+link+'\n📌 Code: *'+code+'*\n\nÀ tout de suite 🙏';
+  const txt='🎙️ *BantuCall* — '+title+'\n\n🔗 '+link+'\n📌 Code: *'+code+'*\n\nÀ tout de suite 🙏';
   window.open('https://wa.me/?text='+encodeURIComponent(txt),'_blank');
 }
 function deleteSchedule(id){
-  let schedules=JSON.parse(localStorage.getItem('fj-schedules')||'[]');
+  let schedules=JSON.parse(localStorage.getItem('bc-schedules')||'[]');
   schedules=schedules.filter(s=>s.id!==id);
-  localStorage.setItem('fj-schedules',JSON.stringify(schedules));
+  localStorage.setItem('bc-schedules',JSON.stringify(schedules));
   renderSchedules();
 }
 
 // ── INIT ─────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded',()=>{
-  // Pré-remplir date minimale
   const today=new Date().toISOString().split('T')[0];
   document.getElementById('sched-date').min=today;
   document.getElementById('sched-date').value=today;
-  // Charger planning
   renderSchedules();
-  // Programmer les rappels sauvegardés
-  const schedules=JSON.parse(localStorage.getItem('fj-schedules')||'[]');
+  // Reprogrammer les rappels sauvegardés
+  const schedules=JSON.parse(localStorage.getItem('bc-schedules')||'[]');
   schedules.forEach(s=>{
     const msUntil=s.ts-Date.now()-(s.reminder*60000);
     if(msUntil>0){
@@ -735,4 +756,18 @@ window.addEventListener('DOMContentLoaded',()=>{
     document.getElementById('inp-code').value=urlCode.toUpperCase();
     toast('🔗 Code détecté: '+urlCode.toUpperCase(),4000);
   }
+
+  // ── FIX BUG 1 : reconnexion automatique après refresh ─────────────
+  // Si une session était en cours (refresh), pré-remplir le formulaire
+  const savedRoom=sessionStorage.getItem('bc-roomCode');
+  const savedName=sessionStorage.getItem('bc-myName');
+  const savedRole=sessionStorage.getItem('bc-myRole');
+  if(savedRoom && savedName){
+    document.getElementById('inp-name').value=savedName;
+    if(savedRole) document.getElementById('inp-role').value=savedRole;
+    document.getElementById('inp-code').value=savedRoom;
+    // Afficher un message d'aide pour reconnexion
+    toast('🔄 Session précédente détectée — Cliquez "Continuer" puis "Rejoindre"',5000);
+  }
+  // ──────────────────────────────────────────────────────────────────
 });
